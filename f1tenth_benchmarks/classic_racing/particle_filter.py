@@ -71,20 +71,20 @@ class ParticleFilter:
         localise_step_time = time.time() - t0
         self.Times.append(localise_step_time)
 
-        image = self.scan_simulator.map_img
-        image_np = np.array(image, dtype=int)
-        image_np[image_np <= 128.] = 0
-        image_np[image_np > 128.] = 1
-        occupancy_grid = image_np
-        plt.imshow(occupancy_grid, cmap='gray', interpolation='nearest')
+        # image = self.scan_simulator.map_img
+        # image_np = np.array(image, dtype=int)
+        # image_np[image_np <= 128.] = 0
+        # image_np[image_np > 128.] = 1
+        # occupancy_grid = image_np
+        # plt.imshow(occupancy_grid, cmap='gray', interpolation='nearest')
 
         
-        plt.xlim([-2, 10])
-        plt.ylim([-2, 10])
-        plt.plot(self.particles[:,0], self.particles[:,1], 'ro', markersize=0.2)
-        plt.plot(estimate[0], estimate[1], 'yo', markersize=5)
-        plt.title('Particle distribution')
-        plt.show()
+        # plt.xlim([-2, 10])
+        # plt.ylim([-2, 10])
+        # plt.plot(self.particles[:,0], self.particles[:,1], 'ro', markersize=0.2)
+        # plt.plot(estimate[0], estimate[1], 'yo', markersize=5)
+        # plt.title('Particle distribution')
+        # plt.show()
 
         return estimate
 

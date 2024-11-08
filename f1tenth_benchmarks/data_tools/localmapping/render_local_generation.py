@@ -128,7 +128,7 @@ def render_local_maps(planner_name, test_id, map_name="aut"):
         except:
             pass
 
-        # plt.axis('equal')         # Uncomment to plot full map
+        plt.axis('equal')         # Uncomment to plot full map
         plt.tight_layout()        
         plt.axis('off')
         name = save_path + f"LocalMapGeneration_{i}"
@@ -145,8 +145,8 @@ def reoreintate_pts(pts, position, theta):
 
 if __name__ == '__main__':
     # render_local_maps("LocalMapPP", "c1")
-    render_local_maps("LocalMPCC", "mu60", "gbr")
-    # render_local_maps("LocalMPCC", "mu60", "esp")
+    # render_local_maps("LocalMPCC", "mu60", "gbr")
+    render_local_maps("LocalMPCC", "mu60", "aut")
     # render_local_maps("LocalMapPlanner", "r1", "mco")
 
 

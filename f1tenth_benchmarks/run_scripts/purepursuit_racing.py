@@ -20,10 +20,10 @@ def test_pure_pursuit_planning():
 
 def test_full_stack_pure_pursuit():
     test_id = "full_stack_pp"
-    map_name = "gbr"
+    map_name = "aut"
     planner = GlobalPurePursuit(test_id, False, planner_name="FullStackPP", extra_params={"racetrack_set": "mu90"})
     # test_full_stack_all_maps(planner, test_id, number_of_laps=5)
-    test_full_stack_single_map(planner, map_name, test_id, number_of_laps=5)
+    test_full_stack_single_map(planner, map_name, test_id, number_of_laps=1)
 
     plot_trajectory_analysis(planner.name, test_id)
     # plot_raceline_tracking(planner.name, test_id)

@@ -2,8 +2,8 @@ from f1tenth_benchmarks.simulator import F1TenthSim_TrueLocation, F1TenthSim
 from f1tenth_benchmarks.classic_racing.particle_filter import ParticleFilter
 # from f1tenth_benchmarks.classic_racing.curvature_filter import CurvatureFilter
 # from f1tenth_benchmarks.classic_racing.curvature_filterV1 import CurvatureFilter
-# from f1tenth_benchmarks.classic_racing.curvature_filterV2 import CurvatureFilter
-from f1tenth_benchmarks.classic_racing.Curvature_localisation import CurvatureFilter
+from f1tenth_benchmarks.classic_racing.curvature_filterV2 import CurvatureFilter
+# from f1tenth_benchmarks.classic_racing.Curvature_localisation import CurvatureFilter
 import torch
 import numpy as np
 

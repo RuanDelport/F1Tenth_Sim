@@ -12,7 +12,7 @@ parent_dir = os.path.abspath(os.path.join(script_dir, "../../../")) # # Move thr
 print(parent_dir)
 
 map_name = "aut"
-lap_number = 2
+lap_number = 0
 
 # Construct the file paths using the suffix and number
 npy_file_path = os.path.join(parent_dir, f"Logs/FullStackPP/RawData_full_stack_pp/cf_estimates_{map_name}_{lap_number}.npy")
@@ -72,8 +72,8 @@ curvature_y = (y - orig_y) / map_resolution
 # Path trajectory plot
 plt.figure()
 plt.plot(track.path[:, 0], track.path[:, 1], '--', linewidth=2, color='black', label='Track Centerline')
-plt.plot(l1[:, 0], l1[:, 1], color='green', label='Track Boundary')
-plt.plot(l2[:, 0], l2[:, 1], color='green')
+plt.plot(l1[:, 0], l1[:, 1], color='black', label='Track Boundary')
+plt.plot(l2[:, 0], l2[:, 1], color='black')
 plt.plot(x1, y1, label="Particle Filter Path")
 plt.plot(x, y, label="Curvature Filter Path")
 arrow_length = 0.1  # Adjust the length of the orientation arrows
@@ -86,7 +86,7 @@ for i in range(len(x1)):
 plt.xlabel('X position')
 plt.ylabel('Y position')
 plt.title('Object Path with Orientation')
-plt.legend()
+plt.legend(loc='upper right')
 plt.grid(True)
 plt.axis('equal')  # Ensure equal scaling on both axes
 plt.show()
@@ -97,21 +97,21 @@ plt.plot(Timedata, label="Curvature Filter Time")
 plt.plot( Timedata1, label="Particel Filter Time")
 plt.xlabel('Iteration')
 plt.ylabel('Time (s)')
-plt.ylim([0, 0.04])
+# plt.ylim([0, 0.04])
 plt.title('Time for each step')
-plt.legend()
+plt.legend(loc='upper right')
 plt.grid(True)
 plt.savefig(f"{output_dir}/{map_name}_Iteration_Time.svg")
 plt.show()
 
 # Map localisation plot
 plt.figure( num=f'{map_name}_centreline')
-plt.title(f"Localisation {map_name}")
+plt.title(f"Localization results on {map_name}")
 map_data.plot_map_img()
 plt.plot(scaled_x, scaled_y, '--', linewidth=2, color='black', label = 'Centreline') # Plotting the track centerline
 plt.plot(startX, startY, 'ro',label = "Starting Point") # Plotting the start point
-plt.plot(particle_x, particle_y, label="Particle Filter Path")
-plt.plot(curvature_x, curvature_y, label="Scan Match Filter Path")
-plt.legend()
+plt.plot(particle_x, particle_y, '--', label="Particle Filter Path")
+plt.plot(curvature_x, curvature_y, '--', label="Scan Match Filter Path")
+plt.legend(loc='lower left')
 plt.savefig(f"{output_dir}/{map_name}_localisation_comparison.svg")
 plt.show()

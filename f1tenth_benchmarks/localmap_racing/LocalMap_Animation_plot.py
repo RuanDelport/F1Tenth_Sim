@@ -16,6 +16,7 @@ from scipy.optimize import curve_fit
 import trajectory_planning_helpers as tph
 from trajectory_planning_helpers.calc_head_curv_num import calc_head_curv_num
 matplotlib.use('TkAgg')  # or another suitable backend like 'Qt5Agg', 'Agg', etc.
+from scipy.optimize import minimize
 
 #Plotting functions
 # ------------------------------------------------------------------------------------------------------------------
@@ -27,6 +28,200 @@ def numerical_sort(value):
 def close_event(event):
     if event.key == 'escape':
         plt.close(event.canvas.figure)
+        
+
+# # Define a function to filter and add interpolated points
+# def filter_and_add_point(data):
+#     # Find points with negative x-values
+#     negative_x_points = data[data[:, 0] < 0]
+    
+#     # Filter out points with negative x-values
+#     filtered_data = data[data[:, 0] >= 0]
+    
+#     # If there are any negative x points, find the one closest to the origin
+#     if negative_x_points.size > 0:
+#         closest_point = negative_x_points[np.argmin(np.abs(negative_x_points[:, 0]))]
+        
+#         # If filtered_data has remaining points, interpolate y based on the next non-removed point
+#         if filtered_data.size > 0:
+#             next_point = filtered_data[0]
+#             y_interp = np.interp(0, [closest_point[0], next_point[0]], [closest_point[1], next_point[1]])
+#             new_point = np.array([[0, y_interp]])
+#             filtered_data = np.vstack((new_point, filtered_data))
+        
+#         # If no non-removed points are left, add two interpolated points
+#         else:
+#             # The first point at x = 0
+#             y_interp_1 = closest_point[1]
+#             new_point_1 = np.array([[0, y_interp_1]])
+            
+#             # The second point further out on the line between the removed point and the origin
+#             x_offset = closest_point[0] / 2  # Halfway to origin for spacing
+#             y_interp_2 = np.interp(x_offset, [closest_point[0], 0], [closest_point[1], y_interp_1])
+#             new_point_2 = np.array([[x_offset, y_interp_2]])
+            
+#             # Add both points at the beginning of the filtered data
+#             filtered_data = np.vstack((new_point_1, new_point_2, filtered_data))
+    
+#     return filtered_data
+
+
+
+
+
+def filter_and_add_point(data):
+    # Find indices where x < 0
+    negative_x_indices = np.where(data[:, 0] < 0)[0]
+    
+    # Check if there are any negative x-values at the beginning of the array
+    if len(negative_x_indices) > 0 and negative_x_indices[0] == 0:
+        # Determine the last index of consecutive negative x-values at the start
+        end_neg_index = np.where(np.diff(negative_x_indices) != 1)[0]
+        last_neg_index = negative_x_indices[end_neg_index[0]] if end_neg_index.size > 0 else negative_x_indices[-1]
+        
+        # Filter out only the negative x-values at the beginning
+        filtered_data = data[last_neg_index + 1:]
+        
+        # Get the last removed point and the next valid point
+        if filtered_data.size > 0:
+            closest_point = data[last_neg_index]
+            next_point = filtered_data[0]
+            # Interpolate y between the last removed point and the next valid point
+            y_interp = np.interp(0, [closest_point[0], next_point[0]], [closest_point[1], next_point[1]])
+        else:
+            # No valid points left, use the y-value of the last removed point
+            y_interp = data[last_neg_index, 1]
+        
+        # Create the new point with interpolated y-value at x = 0
+        new_point = np.array([[0, y_interp]])
+        # Add the new point at the start of the filtered data
+        filtered_data = np.vstack((new_point, filtered_data))
+    
+    else:
+        # No negative x-values at the start, return the original data
+        filtered_data = data
+    
+    return filtered_data
+
+# Function to calculate a cubic Bezier curve from four control points
+def cubic_bezier(p0, p1, p2, p3, num_points=100):
+    t = np.linspace(0, 1, num_points)[:, None]  # Reshape to (num_points, 1) for broadcasting
+    bezier = (1 - t)**3 * p0 + 3 * (1 - t)**2 * t * p1 + 3 * (1 - t) * t**2 * p2 + t**3 * p3
+    return bezier
+
+# Loss function to minimize the distance between the lidar points and the Bezier curve
+def bezier_loss(control_points, lidar_points, p0, p3):
+    # Reshape control points array to extract p1 and p2
+    p1, p2 = np.array(control_points[:2]), np.array(control_points[2:])
+    
+    # Generate the Bezier curve for current control points
+    bezier = cubic_bezier(p0, p1, p2, p3, num_points=len(lidar_points))
+    
+    # Calculate the squared distance between lidar points and Bezier points
+    loss = np.sum(np.linalg.norm(bezier - lidar_points, axis=1)**2)
+    return loss
+
+# Function to fit a Bezier curve to lidar points
+def fit_bezier_to_lidar(lidar_segment):
+    p0, p3 = lidar_segment[0], lidar_segment[-1]  # Endpoints of the curve
+
+    # Initial guess for control points p1 and p2 (midway between p0 and p3)
+    initial_guess = np.concatenate([p0, p3])  # Start with simple midpoint assumption
+
+    # Minimize the loss function to find the best control points p1 and p2
+    result = minimize(bezier_loss, initial_guess, args=(lidar_segment, p0, p3), method='BFGS')
+
+    # Extract the optimized control points
+    p1, p2 = np.array(result.x[:2]), np.array(result.x[2:])
+    
+    return p0, p1, p2, p3  # Return all control points
+
+# Modified plot_lines_animation function with Bezier fitting and control points plotting
+def Bezier_animation():
+    # Load the boundary files
+    local_track_files = sorted(glob.glob("Logs/LocalMPCC/RawData_mu60/LocalMapData_mu60/local_map_*.npy"), key=numerical_sort)
+    right_files = sorted(glob.glob("Logs/LocalMPCC/RawData_mu60/LocalMapData_mu60/line1_*.npy"), key=numerical_sort)
+    left_files = sorted(glob.glob("Logs/LocalMPCC/RawData_mu60/LocalMapData_mu60/line2_*.npy"), key=numerical_sort)
+
+    # Preload the data
+    local_data = [np.load(file) for file in local_track_files]
+    left_data = [np.load(file) for file in left_files]
+    right_data = [np.load(file) for file in right_files]
+
+    # Create the figure and axes
+    fig, ax = plt.subplots(figsize=(12, 8))
+
+    # Plot initial data to set up the plot objects
+    local_line, = ax.plot([], [], 'o-', label='Local Track')
+    left_line, = ax.plot([], [], 'o-', label='Left Line')
+    right_line, = ax.plot([], [], 'o-', label='Right Line')
+    
+    # Bezier lines and control points
+    local_bezier_line, = ax.plot([], [], 'r--', label='Local Bezier')
+    left_bezier_line, = ax.plot([], [], 'g--', label='Left Bezier')
+    right_bezier_line, = ax.plot([], [], 'b--', label='Right Bezier')
+    control_points, = ax.plot([], [], 'kx', label='Control Points')
+
+    # Set labels, title, legend, and grid
+    ax.set_xlabel('X Coordinate')
+    ax.set_ylabel('Y Coordinate')
+    ax.set_title('Left and Right Line Coordinates Over Time')
+    ax.legend()
+    ax.grid(True)
+
+    # Set fixed axis limits based on initial data range (adjust according to your data range)
+    ax.set_xlim(-1, 17)  # Example limits, adjust according to your data range
+    ax.set_ylim(-10, 10)  # Example limits, adjust according to your data range
+
+    # Define the update function
+    def update(frame):
+        # Filter and load the data for this frame
+        local_segment = filter_and_add_point(local_data[frame][:, :2])
+        left_segment = filter_and_add_point(left_data[frame])
+        right_segment = filter_and_add_point(right_data[frame])
+        
+        # Fit Bézier curves for local, left, and right data
+        p0_local, p1_local, p2_local, p3_local = fit_bezier_to_lidar(local_segment)
+        p0_left, p1_left, p2_left, p3_left = fit_bezier_to_lidar(left_segment)
+        p0_right, p1_right, p2_right, p3_right = fit_bezier_to_lidar(right_segment)
+        
+        # Generate Bézier curves
+        bezier_local = cubic_bezier(p0_local, p1_local, p2_local, p3_local)
+        bezier_left = cubic_bezier(p0_left, p1_left, p2_left, p3_left)
+        bezier_right = cubic_bezier(p0_right, p1_right, p2_right, p3_right)
+
+        # Set the local, left, and right lines
+        local_x, local_y = local_segment[:, 0], local_segment[:, 1]
+        left_x, left_y = left_segment[:, 0], left_segment[:, 1]
+        right_x, right_y = right_segment[:, 0], right_segment[:, 1]
+        
+        local_line.set_data(local_x, local_y)
+        left_line.set_data(left_x, left_y)
+        right_line.set_data(right_x, right_y)
+
+        # Set the Bézier curves
+        local_bezier_line.set_data(bezier_local[:, 0], bezier_local[:, 1])
+        left_bezier_line.set_data(bezier_left[:, 0], bezier_left[:, 1])
+        right_bezier_line.set_data(bezier_right[:, 0], bezier_right[:, 1])
+        
+        # Plot the control points for each curve
+        control_x = [p0_local[0], p1_local[0], p2_local[0], p3_local[0], 
+                     p0_left[0], p1_left[0], p2_left[0], p3_left[0],
+                     p0_right[0], p1_right[0], p2_right[0], p3_right[0]]
+        control_y = [p0_local[1], p1_local[1], p2_local[1], p3_local[1], 
+                     p0_left[1], p1_left[1], p2_left[1], p3_left[1],
+                     p0_right[1], p1_right[1], p2_right[1], p3_right[1]]
+        control_points.set_data(control_x, control_y)
+
+        # Update the title to indicate the current frame
+        ax.set_title(f'Left and Right Line Coordinates (Frame {frame})')
+
+    # Create the animation
+    ani = FuncAnimation(fig, update, frames=len(left_data), repeat=False, interval=50)
+
+    plt.show()
+
+
 
 def PrintDataArray(n):
 
@@ -81,9 +276,10 @@ def plot_lines_once(n):
 
     # Plot the coordinates
     ax.plot(local_track[:, 0], local_track[:, 1], label=f'Local track ()', marker='o')
-    ax.plot(left_x, left_y, label=f'Left Line ()', marker='o')
     ax.plot(right_x, right_y, label=f'Right Line ()', marker='o')
-    ax.plot(scan_xs, scan_ys, label=f'Scan Data', marker='o')
+    ax.plot(left_x, left_y, label=f'Left Line ()', marker='o')
+    
+    # ax.plot(scan_xs, scan_ys, label=f'Scan Data', marker='o')
 
     ax.set_xlabel('X Coordinate')
     ax.set_ylabel('Y Coordinate')
@@ -92,8 +288,10 @@ def plot_lines_once(n):
     ax.grid(True)
 
     # Set fixed axis limits based on initial data range (adjust according to your data range)
-    ax.set_xlim([-1, 20])  # Example limits, adjust according to your data range
-    ax.set_ylim([-20, 10])  # Example limits, adjust according to your data range
+    # ax.set_xlim([-1, 20])  # Example limits, adjust according to your data range
+    # ax.set_ylim([-20, 10])  # Example limits, adjust according to your data range
+    ax.set_xlim([-1, 10])  # Example limits, adjust according to your data range
+    ax.set_ylim([-5, 5])  # Example limits, adjust according to your data range
 
     fig.canvas.mpl_connect('key_press_event', close_event)
     plt.show()
@@ -153,6 +351,10 @@ def plot_lines_and_curvature(n):
     coses = np.cos(angles)
     sines = np.sin(angles)
     
+    # local_track = filter_and_add_point(local_track[:,:2])
+    # left_line = filter_and_add_point(left_line)
+    # right_line = filter_and_add_point(right_line)   
+    
     # Extract x and y coordinates
     scan_xs, scan_ys = scans[n+1] * np.array([coses, sines])
     local_x, local_y = local_track[:, 0], local_track[:, 1]
@@ -176,6 +378,7 @@ def plot_lines_and_curvature(n):
     # print(el_lengthsLocal)
 
     # Call the calc_head_curv_num function
+    
     psiLocal, kappaLocal = calc_head_curv_num(
         path=local_track,
         el_lengths=el_lengthsLocal,
@@ -186,31 +389,24 @@ def plot_lines_and_curvature(n):
         stepsize_curv_review=0.2,
         calc_curv=True
     )
+    try:
+        psiLocal, kappaLocal = tph.calc_head_curv_num.calc_head_curv_num(np.column_stack((local_track[:,1],local_track[:,0])), el_lengthsLocal, False)
+        psiLocal = -psiLocal #Issue for some reason the psi values are negative
+    except:
+        print("Error in local calc_head_curv_num")
     
-    psiLocal, kappaLocal = tph.calc_head_curv_num.calc_head_curv_num(np.column_stack((local_track[:,1],local_track[:,0])), el_lengthsLocal, False)
-    psiLocal = -psiLocal #Issue for some reason the psi values are negative
-    
-    psiL, kappaL = calc_head_curv_num(
-        path=pathL,
-        el_lengths=el_lengthsL,
-        is_closed=False,
-        stepsize_psi_preview=0.1,
-        stepsize_psi_review=0.1,
-        stepsize_curv_preview=0.2,
-        stepsize_curv_review=0.2,
-        calc_curv=True
-    )
-    # Call the calc_head_curv_num function
-    psiR, kappaR = calc_head_curv_num(
-        path=pathR,
-        el_lengths=el_lengthsR,
-        is_closed=False,
-        stepsize_psi_preview=0.1,
-        stepsize_psi_review=0.1,
-        stepsize_curv_preview=0.2,
-        stepsize_curv_review=0.2,
-        calc_curv=True
-    )
+    try:
+         psiL, kappaL = tph.calc_head_curv_num.calc_head_curv_num(np.column_stack((pathL[:,1],pathL[:,0])), el_lengthsL, False)
+         psiL = -psiL
+    except:
+        print("Error in left calc_head_curv_num")
+  
+    try:
+        psiR, kappaR = tph.calc_head_curv_num.calc_head_curv_num(np.column_stack((pathR[:,1],pathR[:,0])), el_lengthsR, False)
+        psiR = -psiR
+    except:
+        print("Error in right calc_head_curv_num")
+        
     
     # Visualization
     fig, axs = plt.subplots(3, 1, figsize=(10, 12))
@@ -235,9 +431,18 @@ def plot_lines_and_curvature(n):
     # axs[1].legend()
     
     # Plot the curvature using the circle through three points method
-    axs[1].plot(psiL, label='Left line kappa')
-    axs[1].plot(psiR, label='Right line kappa')
-    axs[1].plot(psiLocal, label='Local line kappa')
+    try:
+        axs[1].plot(psiL, label='Left line kappa')
+    except:
+        print("Error in plotting left line")
+    try:
+        axs[1].plot(psiR, label='Right line kappa')
+    except:
+        print("Error in plotting right line")
+    try:
+        axs[1].plot(psiLocal, label='Local line kappa')
+    except:
+        print("Error in plotting local line")
     axs[1].set_title('Heading (psi) along the Path using calc_head_curv_num')
     axs[1].set_xlabel('Index')
     axs[1].set_ylabel('Heading')
@@ -246,9 +451,18 @@ def plot_lines_and_curvature(n):
     # axs[1].set_ylim([-2, 2])
 
     # Plot the curvature (kappa)
-    axs[2].plot(np.arange(len(kappaL)), kappaL, label='Curvature (kappa) left')
-    axs[2].plot(np.arange(len(kappaR)), kappaR, label='Curvature (kappa) right')
-    axs[2].plot(np.arange(len(kappaLocal)), kappaLocal, label='Curvature (kappa) Local')
+    try:
+        axs[2].plot(np.arange(len(kappaL)), kappaL, label='Curvature (kappa) left')
+    except:
+        print("Error in plotting left curvature")
+    try:
+        axs[2].plot(np.arange(len(kappaR)), kappaR, label='Curvature (kappa) right')
+    except:
+        print("Error in plotting right curvature")
+    try:
+        axs[2].plot(np.arange(len(kappaLocal)), kappaLocal, label='Curvature (kappa) Local')
+    except:
+        print("Error in plotting local curvature")
     axs[2].set_title('Curvature (kappa) along the Path using calc_head_curv_num')
     axs[2].set_xlabel('Point Index')
     axs[2].set_ylabel('Curvature (1/m)')
@@ -487,6 +701,11 @@ def plot_lines_animation():
     # Define the update function
     def update(frame):
         # Update data in plot objects
+        
+        local_data[frame] = filter_and_add_point(local_data[frame][:,:2])
+        left_data[frame] = filter_and_add_point(left_data[frame])
+        right_data[frame] = filter_and_add_point(right_data[frame])   
+        
         local_x, local_y = local_data[frame][:, 0], local_data[frame][:, 1]
         left_x, left_y = left_data[frame][:, 0], left_data[frame][:, 1]
         right_x, right_y = right_data[frame][:, 0], right_data[frame][:, 1]
@@ -538,6 +757,11 @@ def plot_lines_animation_with_polyfit():
 
     # Define the update function
     def update(frame):
+        
+        # local_data[frame] = filter_and_add_point(local_data[frame][:,:2])
+        # left_data[frame] = filter_and_add_point(left_data[frame])
+        # right_data[frame] = filter_and_add_point(right_data[frame])   
+        
         # Update data in plot objects
         left_x, left_y = left_data[frame][:, 0], left_data[frame][:, 1]
         right_x, right_y = right_data[frame][:, 0], right_data[frame][:, 1]
@@ -1067,10 +1291,14 @@ def main():
     # n = 140 #Nice example
     # n = 600
     # n = 40
-    # n =267 # messed up centre line on aut
+    n =267 # messed up centre line on aut
     # n =345 # messed up centre line on esp
     # n =68 # messed up centre line on gbr
-    n = 13
+    # n = 13
+    # n =580 #edge case gbr
+    # n =255
+    
+    # n = 115 #Edgecase aut
     right_line = np.load("Logs/LocalMPCC/RawData_mu60/LocalMapData_mu60/line1_"+ str(n) +".npy")
     
     
@@ -1088,6 +1316,7 @@ def main():
     # plot_boundaries_once(n)
     # plot_boundaries_animation()
     # plot_lines_animation()
+    # Bezier_animation()
     # plot_lines_animation_with_polyfit()
     # plot_lines_and_curvature_animation()
     # plot_Poly_and_curvature_animation()
